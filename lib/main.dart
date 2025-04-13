@@ -44,7 +44,7 @@ class _MainScreenState extends State<MainScreen> {
     UserPage(),
   ];
 
-  final List<String> _labels = ["Clinic", "Log", "Scan", "Chart", "User"];
+  final List<String> _labels = ["Clinic", "Log", "+", "Chart", "User"];
 
   void _onItemTapped(int index) {
     setState(() {
@@ -57,6 +57,7 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       body: _pages[_selectedIndex],
       bottomNavigationBar: BottomAppBar(
+        color: const Color.fromARGB(255, 235, 235, 235),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: List.generate(5, (index) {
@@ -66,16 +67,16 @@ class _MainScreenState extends State<MainScreen> {
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  color: _selectedIndex == index ? Colors.black : Colors.grey[400],
-                  borderRadius: BorderRadius.circular(8),
+                  color: _selectedIndex == index ? Colors.grey[500] : Color.fromARGB(255, 255, 1, 65), //: Colors.grey[400],
+                  borderRadius: index == 2 ? BorderRadius.circular(25) : BorderRadius.circular(8),
                 ),
                 child: Center(
                   child: Text(
                     _labels[index],
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 14,
+                      fontSize: index == 2 ? 35 : 14,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
