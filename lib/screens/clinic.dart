@@ -3,44 +3,41 @@ import 'package:flutter/material.dart';
 class ClinicPage extends StatelessWidget {
   const ClinicPage({super.key});
 
+  Widget buildPageHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 40),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color.fromARGB(255, 255, 1, 65),
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 36,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.blue[100],
-      body: Stack(
-        children: [
-          Positioned(
-            top: 100, 
-            left: 15,
-            right: 15, 
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color.fromARGB(255, 129, 129, 129),  
-                borderRadius: BorderRadius.circular(30),  
-              ),
-              child: const Text(
-                "Clinic",
-                style: TextStyle(
-                  color: Color.fromARGB(255, 255, 255, 255),  
-                  fontSize: 50,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ),
-          Positioned(
-            top: 400, 
-            left: MediaQuery.of(context).size.width / 2 - 60, 
-            child: ElevatedButton(
-              onPressed: () {
-                // TODO: Add Clinic logic
-              },
-              child: const Text("Clinic Button"),
-            ),
-          ),
-        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            buildPageHeader("Clinic"),
+            const Spacer(),
+            const SizedBox(height: 40),
+          ],
+        ),
       ),
     );
   }
