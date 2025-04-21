@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "340191429682",
+    "project_id": "nopressure-app",
+    "storage_bucket": "nopressure-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:340191429682:android:7e7b8e09e4e4a2254e282b",
+        "android_client_info": {
+          "package_name": "com.example.nopressure"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsq1_gghgTNjTfOki6CYwLWoZ_6WsHn-4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
