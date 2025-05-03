@@ -49,3 +49,4 @@ credentials/vision_key.json
 lib/firebase_options.dart
 android/app/google-services.json
 android/app/src/main/res/values/secrets.xml
+
