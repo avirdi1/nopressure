@@ -5,3 +5,10 @@
 # Xcode-related
 **/dgph
 **/xcuserdata/
+
+# secrets 
+.env
+.env.*
+lib/firebase_options.dart
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
