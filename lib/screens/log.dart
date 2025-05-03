@@ -15,6 +15,7 @@ class _LogPageState extends State<LogPage> {
   final TextEditingController systolicController = TextEditingController();
   final TextEditingController diastolicController = TextEditingController();
   Map<String, List<String>> logsByDate = {};
+  bool _loading = true;
 
   DateTime selectedDate = DateTime.now();
   String get today => DateFormat('MMMM d, yyyy').format(selectedDate);
@@ -31,7 +32,6 @@ class _LogPageState extends State<LogPage> {
     try {
       Map<String, dynamic> decoded = json.decode(savedLogs);
 
-      // Ensure it is a Map<String, List<String>>
       setState(() {
         logsByDate = Map<String, List<String>>.from(
           decoded.map((key, value) {
@@ -42,12 +42,13 @@ class _LogPageState extends State<LogPage> {
             }
           }),
         );
+        _loading = false;
       });
     } catch (e) {
       print("Error decoding logs: $e");
-      // Fallback if decoding fails
       setState(() {
         logsByDate = {};
+        _loading = false;
       });
     }
   }
@@ -58,7 +59,6 @@ class _LogPageState extends State<LogPage> {
     await prefs.setString('logsByDate', encodedLogs);
   }
 
-  // Add new log entry
   void logEntry() {
     final systolic = systolicController.text;
     final diastolic = diastolicController.text;
@@ -92,7 +92,6 @@ class _LogPageState extends State<LogPage> {
 
       _saveLogs(); 
 
-      // warning messages
       if (sys >= 180 || dia >= 120 || sys <= 80 || dia <= 50) {
         _showAlert(
           "⚠️ Emergency",
@@ -132,9 +131,8 @@ class _LogPageState extends State<LogPage> {
     );
   }
 
-  // Edit existing log entry
   void _showEditDialog(String date, int index, String oldValue) {
-    final bpPart = oldValue.split(' - ').last.split(' ')[0]; // gets '120/80'
+    final bpPart = oldValue.split(' - ').last.split(' ')[0];
     final parts = bpPart.split('/');
     final systolicEdit = TextEditingController(text: parts[0]);
     final diastolicEdit = TextEditingController(text: parts[1].replaceAll("mmHg", ""));
@@ -255,7 +253,7 @@ class _LogPageState extends State<LogPage> {
                   },
                   icon: const Icon(Icons.calendar_today, color: Colors.black54),
                   label: Text(
-                    DateFormat('EEEE, MMM d').format(selectedDate), // or whatever format
+                    DateFormat('EEEE, MMM d').format(selectedDate),
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -310,58 +308,59 @@ class _LogPageState extends State<LogPage> {
               child: const Text(
                 'Save Reading',
                 style: TextStyle(fontSize: 16, color: Colors.white),
-          
               ),
             ),
             const SizedBox(height: 20),
             const Divider(thickness: 1),
             const SizedBox(height: 10),
             Expanded(
-              child: logsByDate.isEmpty
-                  ? const Center(
-                      child: Text(
-                        "No logs yet",
-                        style: TextStyle(fontSize: 16, color: Colors.black54),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: logsByDate[today]?.length ?? 0,
-                      itemBuilder: (context, index) {
-                        final reading = logsByDate[today]![index];
-                        return Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : logsByDate[today] == null || logsByDate[today]!.isEmpty
+                      ? const Center(
+                          child: Text(
+                            "No logs yet",
+                            style: TextStyle(fontSize: 16, color: Colors.black54),
                           ),
-                          child: ListTile(
-                            title: Text(reading),
-                            trailing: Wrap(
-                              spacing: 12,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
-                                  onPressed: () {
-                                    _showEditDialog(today, index, reading);
-                                  },
+                        )
+                      : ListView.builder(
+                          itemCount: logsByDate[today]!.length,
+                          itemBuilder: (context, index) {
+                            final reading = logsByDate[today]![index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              child: ListTile(
+                                title: Text(reading),
+                                trailing: Wrap(
+                                  spacing: 12,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, color: Colors.blue),
+                                      onPressed: () {
+                                        _showEditDialog(today, index, reading);
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                      onPressed: () {
+                                        setState(() {
+                                          logsByDate[today]!.removeAt(index);
+                                          if (logsByDate[today]!.isEmpty) {
+                                            logsByDate.remove(today);
+                                          }
+                                          _saveLogs();
+                                        });
+                                      },
+                                    ),
+                                  ],
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () {
-                                    setState(() {
-                                      logsByDate[today]!.removeAt(index);
-                                      if (logsByDate[today]!.isEmpty) {
-                                        logsByDate.remove(today);
-                                      }
-                                      _saveLogs();
-                                    });
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                              ),
+                            );
+                          },
+                        ),
             ),
           ],
         ),
