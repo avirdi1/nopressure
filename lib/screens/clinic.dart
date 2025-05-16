@@ -63,9 +63,9 @@ class _ClinicPageState extends State<ClinicPage> {
 
   Future<List<Map<String, dynamic>>> fetchAndSortClinics(Position position) async {
     final apiKey = dotenv.env['GOOGLE_PLACES_KEY'];
- if (apiKey == null || apiKey!.isEmpty) {
-  throw Exception('GOOGLE_PLACES_KEY is missing or not loaded.');
-}
+    if (apiKey == null || apiKey.isEmpty) {
+      throw Exception('GOOGLE_PLACES_KEY is missing or not loaded.');
+    }
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
       '?location=${position.latitude},${position.longitude}'
@@ -101,7 +101,7 @@ class _ClinicPageState extends State<ClinicPage> {
       };
     }).toList();
 
-    clinics.sort((a, b) => a['distance'].compareTo(b['distance'])); // sort by distance
+    clinics.sort((a, b) => a['distance'].compareTo(b['distance']));
     return clinics;
   }
 
@@ -116,35 +116,12 @@ class _ClinicPageState extends State<ClinicPage> {
     }
   }
 
-  Widget buildPageHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 40),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color.fromARGB(255, 255, 1, 65),
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: Text(
-            title.toUpperCase(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 36,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget buildClinicList() {
     if (_clinics.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(16),
         child: Text(
-          "No real clinics found nearby.",
+          "No real clinics found nearby which is only possible if you legit in the midde of nowhere",
           style: TextStyle(fontSize: 18),
         ),
       );
@@ -155,7 +132,7 @@ class _ClinicPageState extends State<ClinicPage> {
         itemCount: _clinics.length,
         itemBuilder: (context, index) {
           final clinic = _clinics[index];
-          final distanceMiles = (clinic['distance'] / 1609).toStringAsFixed(1); // meters to miles
+          final distanceMiles = (clinic['distance'] / 1609).toStringAsFixed(1);
           final isOpen = clinic['open_now'];
 
           return Card(
@@ -210,11 +187,24 @@ class _ClinicPageState extends State<ClinicPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue[100],
+      backgroundColor: const Color.fromARGB(255, 235, 235, 235),
+      appBar: AppBar(
+        backgroundColor: const Color.fromARGB(255, 255, 1, 65),
+        title: const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            "Clinics Nearby",
+            style: TextStyle(
+              fontSize: 24,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            buildPageHeader("Clinic"),
             const SizedBox(height: 10),
             if (_loading)
               const Center(child: CircularProgressIndicator())
