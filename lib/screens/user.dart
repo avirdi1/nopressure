@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '/login.dart';
 
 class UserPage extends StatefulWidget {
   const UserPage({super.key});
@@ -17,6 +18,7 @@ class _UserPageState extends State<UserPage> {
   final heightFeetController = TextEditingController();
   final heightInchesController = TextEditingController();
   bool isEditing = false;
+  final user = FirebaseAuth.instance.currentUser;
 
   @override
   void initState() {
@@ -26,85 +28,57 @@ class _UserPageState extends State<UserPage> {
   }
 
   Future<void> _loadProfile() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      weightController.text = prefs.getString('userWeight') ?? '';
-      final savedHeight = prefs.getString('userHeight') ?? '';
-      final heightParts = RegExp(r"(\d+)'(\d+)").firstMatch(savedHeight);
-      if (heightParts != null) {
-        heightFeetController.text = heightParts.group(1)!;
-        heightInchesController.text = heightParts.group(2)!;
-      }
-    });
+    if (user == null) return;
+    final doc = await FirebaseFirestore.instance.collection('profiles').doc(user!.uid).get();
+    if (doc.exists) {
+      final data = doc.data()!;
+      setState(() {
+        weightController.text = data['weight'] ?? '';
+        final height = data['height'] ?? "";
+        final match = RegExp(r"(\d+)'(\d+)").firstMatch(height);
+        if (match != null) {
+          heightFeetController.text = match.group(1)!;
+          heightInchesController.text = match.group(2)!;
+        }
+      });
+    }
   }
 
   Future<void> _saveProfile() async {
-    final prefs = await SharedPreferences.getInstance();
+    if (user == null) return;
     final height = "${heightFeetController.text}'${heightInchesController.text}";
-    await prefs.setString('userHeight', height);
-    await prefs.setString('userWeight', weightController.text);
+    await FirebaseFirestore.instance.collection('profiles').doc(user!.uid).set({
+      'height': height,
+      'weight': weightController.text,
+    });
     setState(() => isEditing = false);
   }
 
   Future<void> _calculateAverages() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedLogs = prefs.getString('logsByDate') ?? '{}';
+    if (user == null) return;
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user!.uid)
+        .collection('logs')
+        .get();
 
-    try {
-      Map<String, dynamic> decoded = json.decode(savedLogs);
-      final allReadings = <String>[];
+    final systolics = <int>[];
+    final diastolics = <int>[];
 
-      decoded.forEach((_, readings) {
-        if (readings is List) {
-          allReadings.addAll(List<String>.from(readings));
-        }
-      });
-
-      final systolics = <int>[];
-      final diastolics = <int>[];
-
-      for (var reading in allReadings) {
-        final match = RegExp(r'(\d+)/(\d+)').firstMatch(reading);
-        if (match != null) {
-          systolics.add(int.parse(match.group(1)!));
-          diastolics.add(int.parse(match.group(2)!));
-        }
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      final s = int.tryParse(data['systolic'].toString());
+      final d = int.tryParse(data['diastolic'].toString());
+      if (s != null && d != null) {
+        systolics.add(s);
+        diastolics.add(d);
       }
-
-      setState(() {
-        avgSystolic = systolics.isEmpty
-            ? 0
-            : systolics.reduce((a, b) => a + b) / systolics.length;
-        avgDiastolic = diastolics.isEmpty
-            ? 0
-            : diastolics.reduce((a, b) => a + b) / diastolics.length;
-      });
-    } catch (e) {
-      print("Error calculating averages: $e");
     }
-  }
 
-  Widget buildPageHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 40),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color.fromARGB(255, 255, 1, 65),
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: Text(
-            title.toUpperCase(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 36,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ),
-    );
+    setState(() {
+      avgSystolic = systolics.isEmpty ? 0 : systolics.reduce((a, b) => a + b) / systolics.length;
+      avgDiastolic = diastolics.isEmpty ? 0 : diastolics.reduce((a, b) => a + b) / diastolics.length;
+    });
   }
 
   Widget buildProfileSection() {
@@ -115,9 +89,9 @@ class _UserPageState extends State<UserPage> {
           backgroundImage: AssetImage('images/nplogo.png'),
         ),
         const SizedBox(height: 10),
-        const Text(
-          'Anmol Virdi',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+        Text(
+          user?.email ?? 'User',
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 5),
         const Text(
@@ -201,6 +175,37 @@ class _UserPageState extends State<UserPage> {
     );
   }
 
+  void _confirmSignOut() async {
+    final shouldSignOut = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Sign Out"),
+        content: const Text("Are you sure you want to sign out?"),
+        actions: [
+          TextButton(
+            child: const Text("Cancel"),
+            onPressed: () => Navigator.pop(context, false),
+          ),
+          TextButton(
+            child: const Text("Sign Out", style: TextStyle(color: Colors.red)),
+            onPressed: () => Navigator.pop(context, true),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSignOut == true) {
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+          (route) => false,
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final formattedHeight = (heightFeetController.text.isEmpty || heightInchesController.text.isEmpty)
@@ -208,13 +213,32 @@ class _UserPageState extends State<UserPage> {
         : "${heightFeetController.text}'${heightInchesController.text}\"";
 
     return Scaffold(
-      backgroundColor: Colors.purple[100],
+      backgroundColor: const Color.fromARGB(255, 235, 235, 235),
+      appBar: AppBar(
+        backgroundColor: const Color.fromARGB(255, 255, 1, 65),
+        title: const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            "User",
+            style: TextStyle(
+              fontSize: 24,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.white),
+            onPressed: _confirmSignOut,
+          )
+        ],
+      ),
       body: SafeArea(
-        child: SingleChildScrollView( // <-- Wrap with scroll view
+        child: SingleChildScrollView(
           padding: const EdgeInsets.only(bottom: 40),
           child: Column(
             children: [
-              buildPageHeader("User"),
               const SizedBox(height: 20),
               buildProfileSection(),
               const SizedBox(height: 30),
