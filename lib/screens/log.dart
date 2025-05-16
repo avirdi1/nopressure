@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class LogPage extends StatefulWidget {
@@ -14,7 +13,7 @@ class LogPage extends StatefulWidget {
 class _LogPageState extends State<LogPage> {
   final TextEditingController systolicController = TextEditingController();
   final TextEditingController diastolicController = TextEditingController();
-  Map<String, List<String>> logsByDate = {};
+  Map<String, List<Map<String, dynamic>>> logsByDate = {};
   bool _loading = true;
 
   DateTime selectedDate = DateTime.now();
@@ -23,29 +22,40 @@ class _LogPageState extends State<LogPage> {
   @override
   void initState() {
     super.initState();
-    _loadLogs(); 
+    _loadLogs();
   }
 
   void _loadLogs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedLogs = prefs.getString('logsByDate') ?? '{}';  
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
     try {
-      Map<String, dynamic> decoded = json.decode(savedLogs);
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('logs')
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      Map<String, List<Map<String, dynamic>>> grouped = {};
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        if (!data.containsKey('systolic') || !data.containsKey('diastolic') || !data.containsKey('timestamp')) continue;
+        final date = DateFormat('MMMM d, yyyy').format(data['timestamp'].toDate());
+        final reading = {
+          'value': "${data['systolic']}/${data['diastolic']} mmHg",
+          'id': doc.id
+        };
+        if (!grouped.containsKey(date)) grouped[date] = [];
+        grouped[date]!.add(reading);
+      }
 
       setState(() {
-        logsByDate = Map<String, List<String>>.from(
-          decoded.map((key, value) {
-            if (value is List) {
-              return MapEntry(key, List<String>.from(value));
-            } else {
-              return MapEntry(key, []);
-            }
-          }),
-        );
+        logsByDate = grouped;
         _loading = false;
       });
     } catch (e) {
-      print("Error decoding logs: $e");
+      print("Error loading logs from Firestore: $e");
       setState(() {
         logsByDate = {};
         _loading = false;
@@ -53,10 +63,32 @@ class _LogPageState extends State<LogPage> {
     }
   }
 
-  void _saveLogs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final encodedLogs = json.encode(logsByDate);
-    await prefs.setString('logsByDate', encodedLogs);
+  void _saveLogToFirestore(String sys, String dia) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(uid).collection('logs').add({
+      'systolic': sys,
+      'diastolic': dia,
+      'timestamp': DateTime.now(),
+    });
+  }
+
+  void _updateLogInFirestore(String docId, String sys, String dia) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(uid).collection('logs').doc(docId).update({
+      'systolic': sys,
+      'diastolic': dia,
+    });
+  }
+
+  void _deleteLogFromFirestore(String docId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(uid).collection('logs').doc(docId).delete();
   }
 
   void logEntry() {
@@ -78,30 +110,16 @@ class _LogPageState extends State<LogPage> {
         return;
       }
 
-      final newEntry = '$today - $sys/$dia mmHg';
+      systolicController.clear();
+      diastolicController.clear();
 
-      setState(() {
-        if (logsByDate.containsKey(today)) {
-          logsByDate[today]?.insert(0, newEntry);
-        } else {
-          logsByDate[today] = [newEntry];
-        }
-        systolicController.clear();
-        diastolicController.clear();
-      });
-
-      _saveLogs(); 
+      _saveLogToFirestore(sys.toString(), dia.toString());
+      _loadLogs();
 
       if (sys >= 180 || dia >= 120 || sys <= 80 || dia <= 50) {
-        _showAlert(
-          "⚠️ Emergency",
-          "Your blood pressure is at a critical level. Please call or visit emergency services immediately.",
-        );
+        _showAlert("⚠️ Emergency", "Your blood pressure is at a critical level. Please call or visit emergency services immediately.");
       } else if (sys >= 140 || dia >= 90 || sys <= 90 || dia <= 60) {
-        _showAlert(
-          "Notice",
-          "Your blood pressure is outside the normal range. If you're feeling symptoms like dizziness or headaches, please consult a doctor.",
-        );
+        _showAlert("Notice", "Your blood pressure is outside the normal range. If you're feeling symptoms like dizziness or headaches, please consult a doctor.");
       }
 
     } else {
@@ -131,11 +149,10 @@ class _LogPageState extends State<LogPage> {
     );
   }
 
-  void _showEditDialog(String date, int index, String oldValue) {
-    final bpPart = oldValue.split(' - ').last.split(' ')[0];
-    final parts = bpPart.split('/');
+  void _showEditDialog(String date, int index, String oldValue, String docId) {
+    final parts = oldValue.replaceAll(" mmHg", "").split("/");
     final systolicEdit = TextEditingController(text: parts[0]);
-    final diastolicEdit = TextEditingController(text: parts[1].replaceAll("mmHg", ""));
+    final diastolicEdit = TextEditingController(text: parts[1]);
 
     showDialog(
       context: context,
@@ -168,11 +185,11 @@ class _LogPageState extends State<LogPage> {
                 final diastolic = diastolicEdit.text;
 
                 if (systolic.isNotEmpty && diastolic.isNotEmpty) {
-                  final newEntry = '$date - $systolic/$diastolic mmHg';
+                  final newEntry = {'value': '$systolic/$diastolic mmHg', 'id': docId};
                   setState(() {
                     logsByDate[date]![index] = newEntry;
                   });
-                  _saveLogs();
+                  _updateLogInFirestore(docId, systolic, diastolic);
                   Navigator.of(ctx).pop();
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -203,28 +220,24 @@ class _LogPageState extends State<LogPage> {
     dateKeys.sort((a, b) => DateFormat('MMMM d, yyyy').parse(b).compareTo(DateFormat('MMMM d, yyyy').parse(a)));
 
     return Scaffold(
-      backgroundColor: Colors.red[100],
+      backgroundColor: const Color.fromARGB(255, 235, 235, 235),
+      appBar: AppBar(
+        backgroundColor: const Color.fromARGB(255, 255, 1, 65),
+        title: const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            "Log",
+            style: TextStyle(
+              fontSize: 24,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 40),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(
-                  color: const Color.fromARGB(255, 255, 1, 65),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: const Text(
-                  "LOG",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -326,7 +339,9 @@ class _LogPageState extends State<LogPage> {
                       : ListView.builder(
                           itemCount: logsByDate[today]!.length,
                           itemBuilder: (context, index) {
-                            final reading = logsByDate[today]![index];
+                            final entry = logsByDate[today]![index];
+                            final reading = entry['value'];
+                            final docId = entry['id'];
                             return Card(
                               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                               shape: RoundedRectangleBorder(
@@ -340,18 +355,18 @@ class _LogPageState extends State<LogPage> {
                                     IconButton(
                                       icon: const Icon(Icons.edit, color: Colors.blue),
                                       onPressed: () {
-                                        _showEditDialog(today, index, reading);
+                                        _showEditDialog(today, index, reading, docId);
                                       },
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.delete, color: Colors.red),
                                       onPressed: () {
+                                        _deleteLogFromFirestore(docId);
                                         setState(() {
                                           logsByDate[today]!.removeAt(index);
                                           if (logsByDate[today]!.isEmpty) {
                                             logsByDate.remove(today);
                                           }
-                                          _saveLogs();
                                         });
                                       },
                                     ),

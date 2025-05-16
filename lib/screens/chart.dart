@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ChartPage extends StatefulWidget {
   const ChartPage({super.key});
@@ -23,13 +24,8 @@ class _ChartPageState extends State<ChartPage> {
   }
 
   Future<void> _loadAndPrepareData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedLogs = prefs.getString('logsByDate') ?? '{}';
-    final decoded = json.decode(savedLogs) as Map<String, dynamic>;
-
-    final logs = Map<String, List<String>>.from(
-      decoded.map((k, v) => MapEntry(k, List<String>.from(v))),
-    );
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
 
     final now = DateTime.now();
     final formatter = DateFormat('MMMM d, yyyy');
@@ -43,29 +39,43 @@ class _ChartPageState extends State<ChartPage> {
     List<double> diaAvg = [];
     List<String> xLabels = [];
 
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('logs')
+        .orderBy('timestamp', descending: false)
+        .get();
+
+    Map<String, List<Map<String, dynamic>>> grouped = {};
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      if (!data.containsKey('systolic') || !data.containsKey('diastolic') || !data.containsKey('timestamp')) continue;
+      final date = formatter.format(data['timestamp'].toDate());
+      if (!grouped.containsKey(date)) grouped[date] = [];
+      grouped[date]!.add({
+        'systolic': int.tryParse(data['systolic'].toString()),
+        'diastolic': int.tryParse(data['diastolic'].toString())
+      });
+    }
+
     for (var dateStr in past7) {
+      final entries = grouped[dateStr];
       final dayLabel = labelFormat.format(formatter.parse(dateStr));
-      final entries = logs[dateStr];
       if (entries != null && entries.isNotEmpty) {
         List<int> sys = [];
         List<int> dia = [];
 
         for (var entry in entries) {
-          try {
-            final bp = entry.split(' - ').last.split(' ')[0];
-            final parts = bp.split('/');
-            sys.add(int.parse(parts[0]));
-            dia.add(int.parse(parts[1]));
-          } catch (_) {}
+          if (entry['systolic'] != null) sys.add(entry['systolic']);
+          if (entry['diastolic'] != null) dia.add(entry['diastolic']);
         }
 
-        sysAvg.add(sys.reduce((a, b) => a + b) / sys.length);
-        diaAvg.add(dia.reduce((a, b) => a + b) / dia.length);
+        sysAvg.add(sys.isNotEmpty ? sys.reduce((a, b) => a + b) / sys.length : 0);
+        diaAvg.add(dia.isNotEmpty ? dia.reduce((a, b) => a + b) / dia.length : 0);
       } else {
         sysAvg.add(0);
         diaAvg.add(0);
       }
-
       xLabels.add(dayLabel);
     }
 
@@ -74,29 +84,6 @@ class _ChartPageState extends State<ChartPage> {
       systolic = sysAvg;
       diastolic = diaAvg;
     });
-  }
-
-  Widget buildPageHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 40),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color.fromARGB(255, 255, 1, 65),
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: Text(
-            title.toUpperCase(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 36,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget buildLegend() {
@@ -191,14 +178,27 @@ class _ChartPageState extends State<ChartPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.orange[100],
+      backgroundColor: const Color.fromARGB(255, 235, 235, 235),
+      appBar: AppBar(
+        backgroundColor: const Color.fromARGB(255, 255, 1, 65),
+        title: const Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            "Chart",
+            style: TextStyle(
+              fontSize: 24,
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            buildPageHeader("Chart"),
             const SizedBox(height: 10),
             buildLegend(),
-            const Text("Color zones: High 🔴  Pre-High 🟡  Ideal 🟢  Low 🟣", style: TextStyle(fontSize: 12)),
+            const Text("High 🔴  Pre-High 🟡  Ideal 🟢  Low 🟣", style: TextStyle(fontSize: 12)),
             const SizedBox(height: 12),
             Expanded(
               child: systolic.isEmpty || diastolic.isEmpty

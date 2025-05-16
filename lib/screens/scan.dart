@@ -18,6 +18,7 @@ class ScanPage extends StatefulWidget {
 class _ScanPageState extends State<ScanPage> {
   String? scanResult;
   bool isScanning = false;
+  File? _scannedImage;
 
   Future<void> startScan() async {
     final picker = ImagePicker();
@@ -25,35 +26,16 @@ class _ScanPageState extends State<ScanPage> {
 
     if (pickedFile == null) return;
 
-    setState(() => isScanning = true);
+    setState(() {
+      isScanning = true;
+      _scannedImage = File(pickedFile.path);
+    });
 
     final imageBytes = await File(pickedFile.path).readAsBytes();
     final base64Image = base64Encode(imageBytes);
 
     final jsonKey = await rootBundle.loadString('credentials/vision_key.json');
     final key = json.decode(jsonKey);
-    final tokenUrl = "https://oauth2.googleapis.com/token";
-
-    final jwtHeader = {
-      "alg": "RS256",
-      "typ": "JWT"
-    };
-
-    final iat = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-    final exp = iat + 3600;
-    final jwtClaimSet = {
-      "iss": key["client_email"],
-      "scope": "https://www.googleapis.com/auth/cloud-platform",
-      "aud": tokenUrl,
-      "iat": iat,
-      "exp": exp
-    };
-
-    // TODO: use package like `dart_jsonwebtoken` to create JWT properly.
-    // But for now we'll use API key shortcut for testing.
-
-    final apiKey = key["private_key_id"];
-
     final visionUrl = "https://vision.googleapis.com/v1/images:annotate?key=${key["private_key_id"]}";
 
     final response = await http.post(
@@ -127,50 +109,54 @@ class _ScanPageState extends State<ScanPage> {
     await prefs.setString('logsByDate', json.encode(logs));
   }
 
-  Widget buildPageHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 40),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color.fromARGB(255, 255, 1, 65),
-            borderRadius: BorderRadius.circular(30),
-          ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color.fromARGB(255, 235, 235, 235),
+      appBar: AppBar(
+        backgroundColor: const Color.fromARGB(255, 255, 1, 65),
+        title: const Align(
+          alignment: Alignment.centerLeft,
           child: Text(
-            title.toUpperCase(),
-            style: const TextStyle(
+            "Scan",
+            style: TextStyle(
+              fontSize: 24,
               color: Colors.white,
-              fontSize: 36,
               fontWeight: FontWeight.bold,
             ),
           ),
         ),
       ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 247, 239, 239),
       body: SafeArea(
         child: Column(
           children: [
-            buildPageHeader("Scan"),
-            const Spacer(),
-            if (isScanning) const CircularProgressIndicator(),
-            ElevatedButton(
-              onPressed: isScanning ? null : startScan,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color.fromARGB(255, 255, 1, 65),
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            const SizedBox(height: 20),
+            if (_scannedImage != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Image.file(
+                  _scannedImage!,
+                  width: 200,
+                  height: 200,
+                  fit: BoxFit.cover,
+                ),
               ),
-              child: const Text(
-                "Start Scan",
-                style: TextStyle(fontSize: 18, color: Colors.white),
+            if (isScanning)
+              const CircularProgressIndicator()
+            else
+              Center(
+                child: ElevatedButton(
+                  onPressed: startScan,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color.fromARGB(255, 255, 1, 65),
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  ),
+                  child: const Text(
+                    "Start Scan",
+                    style: TextStyle(fontSize: 18, color: Colors.white),
+                  ),
+                ),
               ),
-            ),
             const SizedBox(height: 20),
             if (scanResult != null) ...[
               const Padding(
