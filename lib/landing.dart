@@ -1,5 +1,8 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'main.dart';
+import 'login.dart';
 
 class LandingScreen extends StatefulWidget {
   const LandingScreen({super.key});
@@ -57,9 +60,10 @@ class _LandingScreenState extends State<LandingScreen> with TickerProviderStateM
   }
 
   void _goToMainScreen() {
+    final user = FirebaseAuth.instance.currentUser;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const MainScreen()),
+      MaterialPageRoute(builder: (_) => user == null ? const LoginPage() : const MainScreen()),
     );
   }
 
